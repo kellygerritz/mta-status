@@ -1,8 +1,8 @@
 package kelly.gerritz.mtastatus.service;
 
 public class StatusTime {
-    private StatusEnum statusEnum;
-    private Long delayedDuration;
+    private final StatusEnum statusEnum;
+    private final Long delayedDuration;
 
     public StatusTime(StatusEnum statusEnum, Long delayedDuration) {
         this.statusEnum = statusEnum;

@@ -1,33 +1,40 @@
 package kelly.gerritz.mtastatus.service;
 
 import kelly.gerritz.mtastatus.clients.MtaClient;
+import kelly.gerritz.mtastatus.util.TimeUtil;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 
 @Service
 public class MtaStatusService {
     // Approximate period between MTA updates
     static private final long WAIT_MILLISECOND = 30000L;
+
+    // Json constants
     private static final String DELAYS_HEADER = "Delays";
-    private static final String END_DATE = "endDate";
-    // 2020-10-03T12:50:26-0400
-    private static final DateTimeFormatter MTA_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssx");
+    public static final String STATUS_DETAILS = "statusDetails";
+    public static final String STATUS_SUMMARY = "statusSummary";
+    public static final String ROUTE_DETAILS = "routeDetails";
+    public static final String MODE = "mode";
+    public static final String IN_SERVICE = "inService";
+    public static final String SUBWAY = "subway";
+    public static final String ROUTE = "route";
+
     private long upTime;
 
-
     private final MtaClient mtaClient;
+    private final TimeUtil timeUtil;
     private final HashMap<String, StatusTime> statuses;
 
     @Autowired
-    public MtaStatusService(MtaClient mtaClient) {
+    public MtaStatusService(MtaClient mtaClient, TimeUtil timeUtil) {
         this.mtaClient = mtaClient;
+        this.timeUtil = timeUtil;
         this.upTime = -WAIT_MILLISECOND;
         this.statuses = new HashMap<>();
     }
@@ -44,30 +51,33 @@ public class MtaStatusService {
     public void updateMtaStatuses() {
         upTime = upTime + WAIT_MILLISECOND;
         String mtaJson = mtaClient.fetchMtaInfo();
-        JSONObject baseJson = new JSONObject(mtaJson);
+        if (mtaJson != null && !mtaJson.isEmpty()) {
 
-        JSONArray routeDetails = baseJson.getJSONArray("routeDetails");
-        for (int i = 0; i < routeDetails.length(); i++) {
-            JSONObject routeDetail = routeDetails.getJSONObject(i);
-            String mode = routeDetail.getString("mode");
-            Boolean inService = routeDetail.getBoolean("inService");
+            JSONObject baseJson = new JSONObject(mtaJson);
 
-            if (mode.equalsIgnoreCase("subway") && inService) {
-                String route = routeDetail.getString("route").toUpperCase();
-                StatusEnum currentStatus = getStatusEnum(routeDetail);
+            JSONArray routeDetails = baseJson.getJSONArray(ROUTE_DETAILS);
+            for (int i = 0; i < routeDetails.length(); i++) {
+                JSONObject routeDetail = routeDetails.getJSONObject(i);
+                String mode = routeDetail.getString(MODE);
+                boolean inService = routeDetail.getBoolean(IN_SERVICE);
 
-                StatusTime statusTime = statuses.get(route);
-                Long duration = 0L;
-                if (statusTime != null) {
-                    StatusEnum oldStatus = statusTime.getStatusEnum();
-                    printStatus(currentStatus, oldStatus, route);
-                    duration = statusTime.getDelayedDuration();
-                    if (currentStatus == StatusEnum.Delayed && oldStatus == StatusEnum.Delayed) {
-                        duration = duration + WAIT_MILLISECOND;
+                if (mode.equalsIgnoreCase(SUBWAY) && inService) {
+                    String route = routeDetail.getString(ROUTE).toUpperCase();
+                    StatusEnum currentStatus = getStatusEnum(routeDetail);
+
+                    StatusTime statusTime = statuses.get(route);
+                    Long duration = 0L;
+                    if (statusTime != null) {
+                        StatusEnum oldStatus = statusTime.getStatusEnum();
+                        printStatus(currentStatus, oldStatus, route);
+                        duration = statusTime.getDelayedDuration();
+                        if (currentStatus == StatusEnum.Delayed && oldStatus == StatusEnum.Delayed) {
+                            duration = duration + WAIT_MILLISECOND;
+                        }
                     }
-                }
 
-                statuses.put(route, new StatusTime(currentStatus, duration));
+                    statuses.put(route, new StatusTime(currentStatus, duration));
+                }
             }
         }
 
@@ -86,31 +96,19 @@ public class MtaStatusService {
     private StatusEnum getStatusEnum(JSONObject routeDetail) {
         StatusEnum statusEnum = StatusEnum.NotDelayed;
 
-        if (routeDetail.has("statusDetails")) {
-            JSONArray statusDetails = routeDetail.getJSONArray("statusDetails");
+        if (routeDetail.has(STATUS_DETAILS)) {
+            JSONArray statusDetails = routeDetail.getJSONArray(STATUS_DETAILS);
             for (int i = 0; i < statusDetails.length(); i++) {
                 JSONObject statusDetail = statusDetails.getJSONObject(i);
 
-                String statusSummary = statusDetail.getString("statusSummary");
+                String statusSummary = statusDetail.getString(STATUS_SUMMARY);
 
-                if ( isCurrent(statusDetail) && statusSummary.equalsIgnoreCase(DELAYS_HEADER)) {
+                if (timeUtil.isCurrentEndDate(statusDetail) && statusSummary.equalsIgnoreCase(DELAYS_HEADER)) {
                     statusEnum = StatusEnum.Delayed;
                 }
             }
         }
 
         return statusEnum;
-    }
-
-    private boolean isCurrent(JSONObject statusDetail) {
-        boolean isCurrent = statusDetail.isNull(END_DATE);
-
-        if (!isCurrent) {
-            String string = statusDetail.getString(END_DATE);
-            ZonedDateTime parse = ZonedDateTime.parse(string, MTA_TIME_FORMATTER);
-            parse.isAfter(ZonedDateTime.now());
-        }
-
-        return isCurrent;
     }
 }
