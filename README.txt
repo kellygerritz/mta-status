@@ -1,3 +1,5 @@
+Run `./run.sh` to start program, requires Java 11
+
 Two exposed endpoints
 
 GET '/status/{line}'
