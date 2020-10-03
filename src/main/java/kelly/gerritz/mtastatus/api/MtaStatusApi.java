@@ -41,10 +41,20 @@ public class MtaStatusApi {
             responseEntity = ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         } else {
             Long uptime = mtaStatusService.getUptime();
-            Double fraction = 1 - ((double) statusTime.getDelayedDuration() / uptime);
+            double fraction = getUptimeFraction(statusTime, uptime);
             responseEntity = ResponseEntity.ok(String.format("Line %s has been up %f time", line, fraction));
         }
 
         return responseEntity;
+    }
+
+    private double getUptimeFraction(StatusTime statusTime, Long uptime) {
+        double fraction = 1D;
+        if (uptime != 0) {
+            fraction = 1 - ((double) statusTime.getDelayedDuration() / uptime);
+        } else if (statusTime.getStatusEnum().equals(StatusEnum.Delayed)) {
+            fraction = 0;
+        }
+        return fraction;
     }
 }
