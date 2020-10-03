@@ -1,8 +1,8 @@
 package kelly.gerritz.mtastatus.service;
 
 public enum StatusEnum {
-    Delayed("Delayed"),
-    NotDelayed("not Delayed");
+    Delayed("delayed"),
+    NotDelayed("not delayed");
 
     private String status;
 
